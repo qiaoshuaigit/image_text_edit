@@ -1,0 +1,20 @@
+# 忽略所有图片文件（你报错的那个 161MB 图片就会被无视）
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+
+# 如果你想把 test 文件夹里的图片全忽略掉，也可以写：
+# test/*.png
+
+# 忽略系统及编辑器临时文件
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+# 忽略 Python/Node 等依赖包（假设你是这类项目）
+node_modules/
+__pycache__/
+*.pyc
