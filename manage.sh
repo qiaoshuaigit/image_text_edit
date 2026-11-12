@@ -23,6 +23,17 @@ PID_FILE="${RUN_DIR}/${APP_NAME}.pid"
 LOG_FILE="${LOG_DIR}/${APP_NAME}.log"
 VENV_PY="${PROJECT_ROOT}/venv/bin/python"
 
+# ---------- 监听配置 ----------
+# .env 由 deploy/linux/install*.sh 生成；HOST=0.0.0.0 表示允许云端外网访问
+if [ -f "${PROJECT_ROOT}/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "${PROJECT_ROOT}/.env"
+    set +a
+fi
+HOST="${HOST:-127.0.0.1}"
+PORT="${PORT:-}"
+
 mkdir -p "${RUN_DIR}" "${LOG_DIR}"
 
 # ---------- 输出（非终端自动降级为无色）----------
@@ -42,9 +53,24 @@ error() { printf "%s[FAIL]%s  %s\n" "${C_ERR}" "${C_END}" "$*" >&2; }
 
 # ---------- 工具函数 ----------
 get_port() {
-    local port
-    port="$(grep -oE "server_port=[0-9]+" "${PROJECT_ROOT}/${ENTRY}" 2>/dev/null | head -1 | cut -d= -f2)"
+    local port="${PORT:-}"
+    case "${port}" in
+        ""|*[!0-9]*) port="" ;;
+    esac
+    if [ -z "${port}" ]; then
+        port="$(grep -oE "server_port=[0-9]+" "${PROJECT_ROOT}/${ENTRY}" 2>/dev/null | head -1 | cut -d= -f2)"
+    fi
     echo "${port:-7860}"
+}
+
+# 云端绑定 0.0.0.0 时不能提示 127.0.0.1，否则用户会误以为只能本机访问
+access_hint() {
+    local port="$1"
+    if [ "${HOST}" = "0.0.0.0" ]; then
+        echo "http://<服务器公网IP>:${port}"
+    else
+        echo "http://${HOST}:${port}"
+    fi
 }
 
 # 选一个真正可用的解释器：Windows 上的 python3 常是应用商店占位符，必须验证能跑通
@@ -149,11 +175,14 @@ cmd_start() {
     local pid python port owner i answer
     pid="$(read_pid)"
     port="$(get_port)"
+    # 传给子进程，主程序据此决定监听地址
+    export HOST
+    export PORT="${port}"
 
     # 已在运行（PID 文件有效）则直接返回，保证幂等
     if is_running "${pid}"; then
         warn "${APP_NAME} 已在运行 (PID ${pid})，无需重复启动"
-        info "访问地址: http://127.0.0.1:${port}"
+        info "访问地址: $(access_hint "${port}")"
         return 0
     fi
 
@@ -163,7 +192,7 @@ cmd_start() {
         if port_pid_matches_app "${owner}"; then
             echo "${owner}" >"${PID_FILE}"
             warn "检测到本程序已在运行 (PID ${owner})，已接管并写入 PID 文件"
-            info "访问地址: http://127.0.0.1:${port}"
+            info "访问地址: $(access_hint "${port}")"
             return 0
         fi
         error "端口 ${port} 已被其他进程 ${owner} 占用，请先 ./stop.sh 或更换端口"
@@ -183,6 +212,7 @@ cmd_start() {
 
     info "启动 ${APP_NAME} ..."
     info "解释器: ${python}"
+    info "监听  : ${HOST}:${port}"
     info "日志  : ${LOG_FILE}"
 
     cd "${PROJECT_ROOT}" || return 1
@@ -205,7 +235,7 @@ cmd_start() {
         if [ -n "${answer}" ]; then
             echo "${answer}" >"${PID_FILE}"
             ok "${APP_NAME} 启动成功 (PID ${answer})，端口 ${port}"
-            info "访问地址: http://127.0.0.1:${port}"
+            info "访问地址: $(access_hint "${port}")"
             return 0
         fi
         sleep 1
@@ -268,7 +298,7 @@ cmd_status() {
 
     if is_running "${pid}"; then
         ok "${APP_NAME} 运行中 (PID ${pid})，端口 ${port}"
-        info "访问地址: http://127.0.0.1:${port}"
+        info "访问地址: $(access_hint "${port}")"
         return 0
     fi
     if is_running "${owner}"; then
@@ -311,6 +341,9 @@ ${APP_NAME} 管理脚本
 
 日志: ${LOG_FILE}
 PID : ${PID_FILE}
+
+监听: ${HOST}:$(get_port)
+     可在项目根 .env 中设置 HOST/PORT（云端部署用 HOST=0.0.0.0）
 EOF
 }
 

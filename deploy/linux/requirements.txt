@@ -1,10 +1,22 @@
 # 图片改字工具 v6 - Python 依赖
 # 要求 Python 3.10+（gradio 6 的最低要求）
+# 约束说明：所有上下限均为 CentOS 7 + gcc 4.8.5 实测验证，确保全部使用预编译包，
+# 避免源码编译（该 gcc 版本太旧，编译会失败）。改动前请先用
+#   pip install -r requirements.txt --only-binary=:all: --dry-run
+# 验证一遍，确认所有包都能找到 manylinux 预编译版本。
 
-numpy>=1.26.0
-opencv-python>=4.8.0
-Pillow>=10.0.0
+# numpy 限制 1.x：onnxruntime 1.16 不兼容 numpy 2.x（运行时报 _ARRAY_API not found）
+numpy>=1.26.0,<2.0.0
+
+# opencv-python 限制 4.x：5.0 为大版本升级，API 有变动风险
+opencv-python>=4.8.0,<5.0.0
+
+# Pillow 上限 12.3.0：该版本未发布 cp310 预编译包，只能源码编译且需 C99，会失败
+Pillow>=10.0.0,<12.3.0
+
 gradio>=6.0.0
-rapidocr-onnxruntime>=1.3.0
-pandas>=2.0.0
 
+rapidocr-onnxruntime>=1.3.0
+
+# pandas 上限 2.3.3：该版本未发布 manylinux 预编译包，只能源码编译，会失败
+pandas>=2.0.0,<2.3.3

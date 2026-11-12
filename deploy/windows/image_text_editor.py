@@ -23,26 +23,101 @@ import gradio as gr
 
 Image.MAX_IMAGE_PIXELS = None
 
+def _font_candidate(*paths):
+    """按顺序返回第一个存在的字体文件；全部不存在则返回 None"""
+    for path in paths:
+        if path and os.path.exists(path):
+            return path
+    return None
+
+
 # 字体族 → (常规体, 粗体)；None 表示没有独立粗体文件
+# Linux 上 CentOS 的 Noto 包提供 OTF，Ubuntu 提供 TTC，这里同时兼容
 FONT_MAP = {
-    "微软雅黑": (r"C:\Windows\Fonts\msyh.ttc", r"C:\Windows\Fonts\msyhbd.ttc"),
-    "黑体": (r"C:\Windows\Fonts\simhei.ttf", None),
-    "宋体": (r"C:\Windows\Fonts\simsun.ttc", None),
-    "楷体": (r"C:\Windows\Fonts\simkai.ttf", None),
-    "Arial": (r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
-    "Arial Black": (r"C:\Windows\Fonts\ariblk.ttf", None),
-    "Times New Roman": (r"C:\Windows\Fonts\times.ttf", r"C:\Windows\Fonts\timesbd.ttf"),
-    "Noto Sans CJK SC": ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
-    "Noto Serif CJK SC": ("/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-                          "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc"),
-    "DejaVu Sans": ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    "微软雅黑": (_font_candidate(r"C:\Windows\Fonts\msyh.ttc"),
+                 _font_candidate(r"C:\Windows\Fonts\msyhbd.ttc")),
+    "黑体": (_font_candidate(r"C:\Windows\Fonts\simhei.ttf"), None),
+    "宋体": (_font_candidate(r"C:\Windows\Fonts\simsun.ttc"), None),
+    "楷体": (_font_candidate(r"C:\Windows\Fonts\simkai.ttf"), None),
+    "Arial": (_font_candidate(r"C:\Windows\Fonts\arial.ttf"),
+              _font_candidate(r"C:\Windows\Fonts\arialbd.ttf")),
+    "Arial Black": (_font_candidate(r"C:\Windows\Fonts\ariblk.ttf"), None),
+    "Times New Roman": (_font_candidate(r"C:\Windows\Fonts\times.ttf"),
+                        _font_candidate(r"C:\Windows\Fonts\timesbd.ttf")),
+    "Noto Sans CJK SC": (
+        _font_candidate(
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto/NotoSansCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        ),
+        _font_candidate(
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto/NotoSansCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
+        ),
+    ),
+    "Noto Serif CJK SC": (
+        _font_candidate(
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSerifCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto-cjk/NotoSerifCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSerifCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto/NotoSerifCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto/NotoSerifCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSerifCJK-Regular.ttc",
+        ),
+        _font_candidate(
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSerifCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto-cjk/NotoSerifCJK-Bold.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSerifCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto/NotoSerifCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto/NotoSerifCJK-Bold.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSerifCJK-Bold.ttc",
+        ),
+    ),
+    "DejaVu Sans": (
+        _font_candidate(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ),
+        _font_candidate(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        ),
+    ),
+    "文泉驿正黑": (
+        _font_candidate(
+            "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        ),
+        None,
+    ),
+    "文泉驿微米黑": (
+        _font_candidate(
+            "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        ),
+        None,
+    ),
 }
 
 DISPLAY_MAX_SIDE = 2000   # 显示用缩放后最长边
 OCR_MAX_SIDE = 3000       # OCR 前图片最长边上限，超过先缩放
 DEFAULT_DPI = 96          # 图片无 DPI 信息时按 96dpi 换算 pt→px
+# 部署包可通过 OUTPUT_DIR 指定导出目录；默认仍是程序目录的上一级/output
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR") or os.path.abspath(
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output"))
 
 # 表格列（生成、渲染、界面共用一份定义，避免列名不一致）
 COL_ID = "区域ID"
@@ -127,12 +202,38 @@ class TextDetector:
 
 
 class TextEraser:
-    def erase(self, image_bgr, mask):
+    """只擦文字笔画，不用实心矩形，背景纹理得以保留"""
+
+    def erase(self, image_bgr, mask, radius=3):
         if len(mask.shape) == 3:
             mask = cv2.cvtColor(mask, cv2.COLOR_RGB2GRAY)
-        mask = cv2.dilate(mask, np.ones((3, 3), np.uint8), iterations=1)
-        return cv2.inpaint(image_bgr, mask, 5, cv2.INPAINT_TELEA)
+        # 轻微膨胀 1px 盖住抗锯齿边缘；膨胀过多会把周围纹理一起抹掉
+        # 向外扩 2px：把文字的抗锯齿过渡带一起覆盖，否则描边会残留成灰影
+        mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1)
+        return cv2.inpaint(image_bgr, mask, max(1, int(radius)), cv2.INPAINT_TELEA)
 
+    @staticmethod
+    def stroke_mask(roi_bgr, box_h):
+        """在文字框内生成笔画级掩码。
+
+        思路：文字与背景灰度差异大，用 Otsu 自适应阈值分出前景，
+        再只保留足够大的连通块，避免把背景里的细小纹理误当文字擦掉。
+        """
+        gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+        _, dark = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        _, bright = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        total = gray.size or 1
+        ratio_dark = int((dark > 0).sum()) / total
+        ratio_bright = int((bright > 0).sum()) / total
+        mask = dark if abs(ratio_dark - 0.2) <= abs(ratio_bright - 0.2) else bright
+
+        min_area = max(3, int(box_h * box_h * 0.02))
+        num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        clean = np.zeros_like(mask)
+        for idx in range(1, num):
+            if stats[idx, cv2.CC_STAT_AREA] >= min_area:
+                clean[labels == idx] = 255
+        return clean if clean.any() else mask
 
 class TextRenderer:
     """只管字体解析与取色，绘制在 do_generate 里批量做"""
@@ -142,9 +243,11 @@ class TextRenderer:
         # 为避免"微软雅黑 Bold"与"微软雅黑"两个相似选项让用户混淆，只暴露常规体名字
         self.fonts = {}
         for name, (regular, bold) in FONT_MAP.items():
-            if os.path.exists(regular):
-                self.fonts[name] = (regular, bold if bold and os.path.exists(bold) else regular)
+            if regular:
+                self.fonts[name] = (regular, bold or regular)
         print(f"[OK] 字体: {list(self.fonts.keys())}")
+        if len(self.fonts) < 2:
+            print("[WARN] 可用字体不足 2 个，Linux 请执行 deploy/linux/install.sh 或 install_centos.sh 安装中文字体")
 
     def extract_color(self, img_bgr, x1, y1, x2, y2):
         roi = img_bgr[y1:y2, x1:x2]
@@ -385,7 +488,12 @@ def do_generate(df, font_name, color_mode, custom_color):
             bad_size_ids.append(region_id)
         if action == "不改":
             continue
-        cv2.rectangle(mask, (t['x_min'], t['y_min']), (t['x_max'], t['y_max']), 255, -1)
+        # 只把原文字笔画写进 mask，保留框内其余背景纹理
+        px1, py1 = max(0, t['x_min']), max(0, t['y_min'])
+        px2, py2 = min(w, t['x_max']), min(h, t['y_max'])
+        if px2 > px1 and py2 > py1:
+            stroke = eraser.stroke_mask(orig[py1:py2, px1:px2], py2 - py1)
+            mask[py1:py2, px1:px2] = np.maximum(mask[py1:py2, px1:px2], stroke)
         if action == "替换" and new_text:
             replaces.append({
                 'text': new_text,
@@ -401,7 +509,9 @@ def do_generate(df, font_name, color_mode, custom_color):
         x1, x2 = max(0, xs.min()-5), min(w, xs.max()+5)
         y1, y2 = max(0, ys.min()-5), min(h, ys.max()+5)
         roi_mask = mask[y1:y2, x1:x2]
-        roi_erased = eraser.erase(result[y1:y2, x1:x2], roi_mask)
+        # 半径按擦除区域高度自适应：太小填不满，太大把周围纹理也涂糊
+        radius = max(3, min(9, (y2 - y1) // 60 + 2))
+        roi_erased = eraser.erase(result[y1:y2, x1:x2], roi_mask, radius=radius)
         result[y1:y2, x1:x2] = roi_erased
 
     # 批量渲染：一次性格式转换，避免 N 次全图拷贝
@@ -456,8 +566,7 @@ def save_hd_png():
     result = _state['last_result_bgr']
     if result is None:
         return "没有可保存的结果，请先生成", None
-    # 输出目录固定在项目 output（src/ 与 deploy/windows/ 的上一级），方便用户直接找到
-    output_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output"))
+    output_dir = OUTPUT_DIR
     os.makedirs(output_dir, exist_ok=True)
     # 原图名 + 时间戳，同一秒内连续导出自动补序号，不覆盖历史结果
     name = _state['source_name'] or 'image'
@@ -552,6 +661,13 @@ with gr.Blocks(title="图片改字工具 v6") as demo:
 
 
 if __name__ == "__main__":
-    # allowed_paths：导出文件在项目 output 目录，需显式允许 Gradio 读取，否则下载会报 InvalidPathError
-    demo.launch(server_name="127.0.0.1", server_port=7860, share=False, max_file_size="500MB",
-                allowed_paths=[os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")])
+    # 云端部署通过 .env 注入 HOST=0.0.0.0；默认只监听本机，保持原有行为
+    host = os.environ.get("HOST", "127.0.0.1")
+    try:
+        port = int(os.environ.get("PORT", "7860"))
+    except ValueError:
+        print(f"[WARN] PORT={os.environ.get('PORT')!r} 不是整数，回退 7860")
+        port = 7860
+    # allowed_paths：导出文件在 output 目录，需显式允许 Gradio 读取，否则下载会报 InvalidPathError
+    demo.launch(server_name=host, server_port=port, share=False, max_file_size="500MB",
+                allowed_paths=[OUTPUT_DIR])

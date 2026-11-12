@@ -14,6 +14,8 @@ v6 修复：
 import os
 import re
 import time
+import shutil
+import subprocess
 import tempfile
 import cv2
 import numpy as np
@@ -23,26 +25,285 @@ import gradio as gr
 
 Image.MAX_IMAGE_PIXELS = None
 
+def _font_candidate(*paths):
+    """按顺序返回第一个存在的字体文件；全部不存在则返回 None"""
+    for path in paths:
+        if path and os.path.exists(path):
+            return path
+    return None
+
+
 # 字体族 → (常规体, 粗体)；None 表示没有独立粗体文件
+# Linux 上 CentOS 的 Noto 包提供 OTF，Ubuntu 提供 TTC，这里同时兼容
 FONT_MAP = {
-    "微软雅黑": (r"C:\Windows\Fonts\msyh.ttc", r"C:\Windows\Fonts\msyhbd.ttc"),
-    "黑体": (r"C:\Windows\Fonts\simhei.ttf", None),
-    "宋体": (r"C:\Windows\Fonts\simsun.ttc", None),
-    "楷体": (r"C:\Windows\Fonts\simkai.ttf", None),
-    "Arial": (r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf"),
-    "Arial Black": (r"C:\Windows\Fonts\ariblk.ttf", None),
-    "Times New Roman": (r"C:\Windows\Fonts\times.ttf", r"C:\Windows\Fonts\timesbd.ttf"),
-    "Noto Sans CJK SC": ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-                         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
-    "Noto Serif CJK SC": ("/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
-                          "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc"),
-    "DejaVu Sans": ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    "微软雅黑": (_font_candidate(r"C:\Windows\Fonts\msyh.ttc"),
+                 _font_candidate(r"C:\Windows\Fonts\msyhbd.ttc")),
+    "黑体": (_font_candidate(r"C:\Windows\Fonts\simhei.ttf"), None),
+    "宋体": (_font_candidate(r"C:\Windows\Fonts\simsun.ttc"), None),
+    "楷体": (_font_candidate(r"C:\Windows\Fonts\simkai.ttf"), None),
+    "Arial": (_font_candidate(r"C:\Windows\Fonts\arial.ttf"),
+              _font_candidate(r"C:\Windows\Fonts\arialbd.ttf")),
+    "Arial Black": (_font_candidate(r"C:\Windows\Fonts\ariblk.ttf"), None),
+    "Times New Roman": (_font_candidate(r"C:\Windows\Fonts\times.ttf"),
+                        _font_candidate(r"C:\Windows\Fonts\timesbd.ttf")),
+    "Noto Sans CJK SC": (
+        _font_candidate(
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto/NotoSansCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        ),
+        _font_candidate(
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto/NotoSansCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
+        ),
+    ),
+    "Noto Serif CJK SC": (
+        _font_candidate(
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSerifCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto-cjk/NotoSerifCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSerifCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto/NotoSerifCJKsc-Regular.otf",
+            "/usr/share/fonts/google-noto/NotoSerifCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSerifCJK-Regular.ttc",
+        ),
+        _font_candidate(
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSerifCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto-cjk/NotoSerifCJK-Bold.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSerifCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto/NotoSerifCJKsc-Bold.otf",
+            "/usr/share/fonts/google-noto/NotoSerifCJK-Bold.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSerifCJK-Bold.ttc",
+        ),
+    ),
+    "DejaVu Sans": (
+        _font_candidate(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ),
+        _font_candidate(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        ),
+    ),
+    "文泉驿正黑": (
+        _font_candidate(
+            "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        ),
+        None,
+    ),
+    "文泉驿微米黑": (
+        _font_candidate(
+            "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        ),
+        None,
+    ),
 }
+
+# Linux 字体显示名映射：把开源字体的西文注册名换成用户熟悉的 Windows 叫法。
+# 只改界面显示，不动字体文件；Windows 侧不受影响。
+# 说明：SimSun/SimHei/SimKai/Arial 是商业字体，Linux 无法分发，这里用风格相近的开源替代。
+LINUX_FONT_ALIAS = [
+    # (匹配关键字, 显示名)；按顺序匹配，先命中先用
+    ("uming", "宋体(明体)"),
+    ("ukai", "楷体(文鼎)"),
+    ("wenquanyi zen hei", "黑体(文泉驿正黑)"),
+    ("wenquanyi micro hei mono", "黑体(文泉驿微米黑)等宽"),
+    ("wenquanyi micro hei", "黑体(文泉驿微米黑)"),
+    ("noto sans cjk", "黑体(Noto)"),
+    ("noto serif cjk", "宋体(Noto)"),
+    ("dejavu sans mono", "等宽(DejaVu)"),
+    ("dejavu sans", "DejaVu Sans"),
+    ("liberation sans", "Arial(替代)"),
+    ("liberation serif", "Times New Roman(替代)"),
+    ("liberation mono", "Courier New(替代)"),
+]
+
+
+def _friendly_name(family):
+    """把 Linux 上的西文族名换成中文用户熟悉的叫法；没有映射时原样返回"""
+    low = family.lower()
+    for keyword, label in LINUX_FONT_ALIAS:
+        if keyword in low:
+            return label
+    return family
+
+
+def _fc_list_latin_fonts():
+    """补充常用西文字体：中文字体扫描（:lang=zh）扫不到 Arial/Times 这类开源替代品"""
+    if not shutil.which("fc-list"):
+        return []
+    wanted = {
+        "Liberation Sans": "Arial(替代)",
+        "Liberation Serif": "Times New Roman(替代)",
+        "Liberation Mono": "Courier New(替代)",
+    }
+    try:
+        out = subprocess.run(["fc-list", "-f", "%{file}\t%{family}\t%{style}\n"],
+                             capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        return []
+    found = {}
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        path, names, style = parts[0].strip(), parts[1].strip(), parts[2].strip()
+        if not os.path.exists(path):
+            continue
+        family = names.split(",")[0].strip()
+        if family not in wanted:
+            continue
+        weight = style.split(",")[0].strip().lower()
+        weight = weight.split("=", 1)[1].strip() if "=" in weight else weight
+        entry = found.setdefault(family, {"regular": None, "bold": None})
+        if weight == "bold":
+            entry["bold"] = entry["bold"] or path
+        elif weight in ("regular", "book", "normal"):
+            entry["regular"] = entry["regular"] or path
+    result = []
+    for family, entry in found.items():
+        if entry["regular"]:
+            result.append((wanted[family], entry["regular"], entry["bold"]))
+    return result
+
+def _fc_list_fonts():
+    """Linux 下用 fontconfig 列出系统中文字体。
+
+    返回 [(族名, 常规体路径, 粗体路径或None)]。
+    - 同一字体文件只保留一个名字，避免 "AR PL UKai CN / TW / HK" 这类同一文件多别名重复出现
+    - 名字里带 CN/SC 的（简体优先）排在前面
+    - 只有常规体才暴露给用户，避免 "某某 Bold" 与 "某某" 重复
+    """
+    if not shutil.which("fc-list"):
+        return []
+    try:
+        # 用 -f 显式指定输出格式：CentOS 7 上 "fc-list :lang=zh file family style"
+        # 这种空格分隔的写法会输出空结果，必须用 -f 模板
+        out = subprocess.run(
+            ["fc-list", ":lang=zh", "-f", "%{file}\t%{family}\t%{style}\n"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout
+    except Exception:
+        return []
+
+    # 按族归并；同一 path 的多个别名只留一个（优先 CN/SC，其次名字最短的）
+    families = {}   # 族名 -> regular/bold 路径及其评分，用于择优
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        path, names, style = parts[0].strip(), parts[1].strip(), parts[2].strip().lower()
+        if not os.path.exists(path):
+            continue
+        family = names.split(",")[0].strip()
+        if not family:
+            continue
+        # 去掉语言后缀归并同族，但把是否简体记成分数
+        base = re.sub(r"\s+(JP|KR|TC|HK|SC|CN|TW|MBE|Mono|Sharp)$", "", family).strip()
+        if not base:
+            continue
+        # 字重优先级：fc-list 的 style 是 "Medium,Regular" 这种复合值，取第一项才是真实字重
+        # fc-list 的第三段带 "style=" 前缀（如 "style=Medium,Regular"），先剥掉
+        weight = style.split(",")[0].strip().lower()
+        weight = weight.split("=", 1)[1].strip() if "=" in weight else weight
+        score = 0
+        if weight in ("regular", "book", "normal"):
+            score += 8
+        elif weight == "medium":
+            score += 3
+        elif any(k in weight for k in ("light", "thin", "demi", "black", "heavy", "bold")):
+            score -= 8
+        if re.search(r"\b(CN|SC)\b", family):
+            score += 10          # 简体优先
+        if "mono" in family.lower() or "sharp" in family.lower():
+            score -= 5           # 等宽/点阵变体靠后
+        score -= len(family) // 10
+
+        entry = families.setdefault(base, {"regular": None, "bold": None,
+                                           "score": -999, "name": base, "path": None})
+        entry["path"] = path
+        if score > entry["score"]:
+            entry["score"] = score
+            entry["name"] = family
+        # 常规体按 score 择优（而不是先到先得），避免 Medium 抢在 Regular 前面
+        # 粗体单列评分：Bold 最优，Black/Heavy 次之，避免挑到最重字重
+        if "bold" in weight or "black" in weight or "heavy" in weight:
+            bscore = 10 if weight == "bold" else 4
+            if bscore > entry.get("bold_score", -999):
+                entry["bold"] = path
+                entry["bold_score"] = bscore
+        else:
+            if "regular" not in entry or score > entry.get("regular_score", -999):
+                entry["regular"] = path
+                entry["regular_score"] = score
+
+    # 同一文件只保留一次
+    seen_paths = set()
+    result = []
+    for base, entry in sorted(families.items(), key=lambda kv: -kv[1]["score"]):
+        if not entry["regular"]:
+            continue
+        key = os.path.basename(entry["regular"])
+        if key in seen_paths:
+            continue
+        seen_paths.add(key)
+        result.append((entry["name"], entry["regular"], entry["bold"]))
+    return result
+
+
+def _build_font_map():
+    """字体族表：优先 Windows/常见路径的硬编码表，再用系统字体补充（不覆盖已有项）"""
+    fonts = {}
+    # Linux 上用别名替换西文族名；Windows 字体名保持原样（别名表只含 Linux 关键字）
+    for name, (regular, bold) in FONT_MAP.items():
+        if regular:
+            fonts[_friendly_name(name)] = (regular, bold or regular)
+
+    # Linux：用 fc-list 动态发现，避免硬编码路径换发行版就失效
+    # 注意：同一字体常有多个副本（如 opentype/noto 软链指向 google-noto），
+    # 仅比对路径不够，还要比对字体文件名，否则会出现「黑体(Noto)」与「Noto Sans CJK SC」重复
+    existing_files = {os.path.basename(v[0]) for v in fonts.values()}
+    for name, regular, bold in _fc_list_fonts():
+        display = _friendly_name(name)
+        basename = os.path.basename(regular)
+        # 去掉字重后缀后比对族文件，避免 Regular 与 Bold 被当成同一族
+        family_file = re.sub(r"[-_]?(Regular|Bold|Book|Medium|Light|Thin)", "", basename, flags=re.I)
+        if display in fonts:
+            continue
+        if any(re.sub(r"[-_]?(Regular|Bold|Book|Medium|Light|Thin)", "", e, flags=re.I) == family_file
+               for e in existing_files):
+            continue
+        fonts[display] = (regular, bold or regular)
+        existing_files.add(basename)
+
+    # 补充西文开源替代字体（Arial/Times/Courier 的等价物），中文扫描扫不到这些
+    for display, regular, bold in _fc_list_latin_fonts():
+        if display not in fonts and not any(v[0] == regular for v in fonts.values()):
+            fonts[display] = (regular, bold or regular)
+    return fonts
+
 
 DISPLAY_MAX_SIDE = 2000   # 显示用缩放后最长边
 OCR_MAX_SIDE = 3000       # OCR 前图片最长边上限，超过先缩放
 DEFAULT_DPI = 96          # 图片无 DPI 信息时按 96dpi 换算 pt→px
+# 部署包可通过 OUTPUT_DIR 指定导出目录；默认仍是程序目录的上一级/output
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR") or os.path.abspath(
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output"))
 
 # 表格列（生成、渲染、界面共用一份定义，避免列名不一致）
 COL_ID = "区域ID"
@@ -127,12 +388,38 @@ class TextDetector:
 
 
 class TextEraser:
-    def erase(self, image_bgr, mask):
+    """只擦文字笔画，不用实心矩形，背景纹理得以保留"""
+
+    def erase(self, image_bgr, mask, radius=3):
         if len(mask.shape) == 3:
             mask = cv2.cvtColor(mask, cv2.COLOR_RGB2GRAY)
-        mask = cv2.dilate(mask, np.ones((3, 3), np.uint8), iterations=1)
-        return cv2.inpaint(image_bgr, mask, 5, cv2.INPAINT_TELEA)
+        # 轻微膨胀 1px 盖住抗锯齿边缘；膨胀过多会把周围纹理一起抹掉
+        # 向外扩 2px：把文字的抗锯齿过渡带一起覆盖，否则描边会残留成灰影
+        mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1)
+        return cv2.inpaint(image_bgr, mask, max(1, int(radius)), cv2.INPAINT_TELEA)
 
+    @staticmethod
+    def stroke_mask(roi_bgr, box_h):
+        """在文字框内生成笔画级掩码。
+
+        思路：文字与背景灰度差异大，用 Otsu 自适应阈值分出前景，
+        再只保留足够大的连通块，避免把背景里的细小纹理误当文字擦掉。
+        """
+        gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
+        _, dark = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        _, bright = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        total = gray.size or 1
+        ratio_dark = int((dark > 0).sum()) / total
+        ratio_bright = int((bright > 0).sum()) / total
+        mask = dark if abs(ratio_dark - 0.2) <= abs(ratio_bright - 0.2) else bright
+
+        min_area = max(3, int(box_h * box_h * 0.02))
+        num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        clean = np.zeros_like(mask)
+        for idx in range(1, num):
+            if stats[idx, cv2.CC_STAT_AREA] >= min_area:
+                clean[labels == idx] = 255
+        return clean if clean.any() else mask
 
 class TextRenderer:
     """只管字体解析与取色，绘制在 do_generate 里批量做"""
@@ -140,11 +427,10 @@ class TextRenderer:
     def __init__(self):
         # 每个可见字体名 → (常规体路径, 粗体路径或None)；
         # 为避免"微软雅黑 Bold"与"微软雅黑"两个相似选项让用户混淆，只暴露常规体名字
-        self.fonts = {}
-        for name, (regular, bold) in FONT_MAP.items():
-            if os.path.exists(regular):
-                self.fonts[name] = (regular, bold if bold and os.path.exists(bold) else regular)
+        self.fonts = _build_font_map()
         print(f"[OK] 字体: {list(self.fonts.keys())}")
+        if len(self.fonts) < 2:
+            print("[WARN] 可用字体不足 2 个，Linux 请执行 deploy/linux/install.sh 或 install_centos.sh 安装中文字体")
 
     def extract_color(self, img_bgr, x1, y1, x2, y2):
         roi = img_bgr[y1:y2, x1:x2]
@@ -385,7 +671,12 @@ def do_generate(df, font_name, color_mode, custom_color):
             bad_size_ids.append(region_id)
         if action == "不改":
             continue
-        cv2.rectangle(mask, (t['x_min'], t['y_min']), (t['x_max'], t['y_max']), 255, -1)
+        # 只把原文字笔画写进 mask，保留框内其余背景纹理
+        px1, py1 = max(0, t['x_min']), max(0, t['y_min'])
+        px2, py2 = min(w, t['x_max']), min(h, t['y_max'])
+        if px2 > px1 and py2 > py1:
+            stroke = eraser.stroke_mask(orig[py1:py2, px1:px2], py2 - py1)
+            mask[py1:py2, px1:px2] = np.maximum(mask[py1:py2, px1:px2], stroke)
         if action == "替换" and new_text:
             replaces.append({
                 'text': new_text,
@@ -401,7 +692,9 @@ def do_generate(df, font_name, color_mode, custom_color):
         x1, x2 = max(0, xs.min()-5), min(w, xs.max()+5)
         y1, y2 = max(0, ys.min()-5), min(h, ys.max()+5)
         roi_mask = mask[y1:y2, x1:x2]
-        roi_erased = eraser.erase(result[y1:y2, x1:x2], roi_mask)
+        # 半径按擦除区域高度自适应：太小填不满，太大把周围纹理也涂糊
+        radius = max(3, min(9, (y2 - y1) // 60 + 2))
+        roi_erased = eraser.erase(result[y1:y2, x1:x2], roi_mask, radius=radius)
         result[y1:y2, x1:x2] = roi_erased
 
     # 批量渲染：一次性格式转换，避免 N 次全图拷贝
@@ -456,8 +749,7 @@ def save_hd_png():
     result = _state['last_result_bgr']
     if result is None:
         return "没有可保存的结果，请先生成", None
-    # 输出目录固定在项目 output（src/ 与 deploy/windows/ 的上一级），方便用户直接找到
-    output_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output"))
+    output_dir = OUTPUT_DIR
     os.makedirs(output_dir, exist_ok=True)
     # 原图名 + 时间戳，同一秒内连续导出自动补序号，不覆盖历史结果
     name = _state['source_name'] or 'image'
@@ -552,6 +844,13 @@ with gr.Blocks(title="图片改字工具 v6") as demo:
 
 
 if __name__ == "__main__":
-    # allowed_paths：导出文件在项目 output 目录，需显式允许 Gradio 读取，否则下载会报 InvalidPathError
-    demo.launch(server_name="127.0.0.1", server_port=7860, share=False, max_file_size="500MB",
-                allowed_paths=[os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")])
+    # 云端部署通过 .env 注入 HOST=0.0.0.0；默认只监听本机，保持原有行为
+    host = os.environ.get("HOST", "127.0.0.1")
+    try:
+        port = int(os.environ.get("PORT", "7860"))
+    except ValueError:
+        print(f"[WARN] PORT={os.environ.get('PORT')!r} 不是整数，回退 7860")
+        port = 7860
+    # allowed_paths：导出文件在 output 目录，需显式允许 Gradio 读取，否则下载会报 InvalidPathError
+    demo.launch(server_name=host, server_port=port, share=False, max_file_size="500MB",
+                allowed_paths=[OUTPUT_DIR])

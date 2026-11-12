@@ -5,11 +5,13 @@ title Image Text Editor - Install
 :: Image Text Editor v6 - Windows install (English output only)
 
 echo ==========================================
+echo.
 echo   Image Text Editor v6 - Windows Install
 echo ==========================================
 echo.
 
 echo [1/5] Checking Python 3.10+ ...
+echo.
 set "PY="
 where py >nul 2>&1
 if not errorlevel 1 (
@@ -25,6 +27,7 @@ if not defined PY goto no_python
 echo.
 
 echo [2/5] Installing dependencies ...
+echo.
 %PY% -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple
 %PY% -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 if not errorlevel 1 goto verify
@@ -53,8 +56,10 @@ mkdir "output" 2>nul
 echo.
 
 echo ==========================================
+echo.
 echo   INSTALL COMPLETE
 echo ==========================================
+echo.
 echo   Start : start.bat
 echo   Stop  : stop.bat
 echo   URL   : http://127.0.0.1:7860

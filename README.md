@@ -47,13 +47,16 @@ yixue_work/
 ├── deploy/                       # 部署相关
 │   ├── windows/                  # Windows 一键部署包
 │   │   ├── install.bat              # 一键安装（纯英文、清华镜像源、压缩包检测）
-│   │   ├── start.bat               # 启动脚本（纯英文）
-│   │   ├── check_python.bat         # Python 环境检测
+│   │   ├── start.bat / stop.bat     # 启动 / 停止
+│   │   ├── restart.bat / status.bat / logs.bat
 │   │   ├── image_text_editor.py     # 主程序副本
 │   │   └── requirements.txt
-│   └── linux/                    # Linux 部署脚本
+│   └── linux/                    # Linux 自包含部署包
 │       ├── install.sh              # Ubuntu/Debian 部署脚本
-│       ├── install_centos.sh       # CentOS 7 部署脚本（源码编译 Python 3.8）
+│       ├── install_centos.sh       # CentOS 7 部署脚本（源码编译 Python 3.10）
+│       ├── manage.sh               # 服务管理（启动/停止/状态/日志）
+│       ├── start.sh / stop.sh / restart.sh / status.sh / logs.sh
+│       ├── image_text_editor.py    # 主程序副本
 │       └── requirements.txt
 ├── docs/                         # 文档
 │   ├── README.md                    # 项目总览（本文件）
@@ -102,7 +105,7 @@ python image_text_editor.py
 把 `deploy/windows/` 整个文件夹拷过去，双击 `install.bat` 即可。
 
 ### 5.3 Linux 部署
-详见 `docs/部署指南.md`。
+把 `deploy/linux/` 整个目录上传到服务器，执行 `./install.sh`，再 `./start.sh`。详见 `docs/部署指南.md`。
 
 ---
 
